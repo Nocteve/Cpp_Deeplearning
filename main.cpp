@@ -6,11 +6,14 @@
 #include <random>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <algorithm>
 #define matrix vector<vector<float> >
 #define vec vector<float>
 #define ll long long 
+#define vecP vector<pair<string,int> >
 using namespace std;
-
+namespace fs=std::filesystem;
 
 matrix operator+(const matrix& x, const matrix& y) {
     matrix output;
@@ -165,25 +168,58 @@ vector<int> get_random_num_vec(int min_num,int max_num,int sum){//注意不能�
     }
     return output;
 }
+
+class Dataset{
+public:
+    string data_root;
+    Dataset(string _data_root){
+        data_root=_data_root;//注意此处的初始化
+    }
+    vector<pair<string,int> > get_all(){
+        vector<pair<string,int> > output;
+        try{
+            for(auto &entry:fs::directory_iterator(data_root)){
+                if(entry.is_directory()){
+                    for(auto &item:fs::directory_iterator(entry.path())){
+                        pair<string,int> temp;
+                        string path=entry.path();
+                        int label=static_cast<int>(path[path.length()-1])-'0';
+                        temp=make_pair(item.path(),label);
+                        //cout<<temp.first<<temp.second<<endl;
+                        output.push_back(temp);
+                    }
+                }
+            }
+        }catch(const fs::filesystem_error &e){
+            cerr<<"file_system_error:"<<e.what()<<endl;
+        }
+        
+        return output;
+        
+    }
+
+};
+
 class Model_FCN{
 public:
+    Dataset train_data_all,test_data_all;
     matrix w1,w2,w3;
     vec b1,b2,b3;
-    float epoch_loss;
+    //float epoch_loss;
     string train_data_root,test_data_root;
 
     vec orgin_x,y1,y2,y3,r_y1,r_y2,sig_y3,sof;//需要保存一些中间值用于梯度的计算
     vec t_vec;//实际值向量（是一个one hot向量）
     matrix grad_w1,grad_w2,grad_w3;
     vec grad_b1,grad_b2,grad_b3;
-    Model_FCN(){
+    Model_FCN():train_data_all("./DATA/TRAIN"),test_data_all("./DATA/TEST"){
         w1=get_random_matrix(784,128);
         w2=get_random_matrix(128,64);
         w3=get_random_matrix(64,10);
         b1=get_random_matrix(128,1)[0];
         b2=get_random_matrix(64,1)[0];
         b3=get_random_matrix(10,1)[0];
-        epoch_loss=0;
+        //epoch_loss=0;
         train_data_root="./DATA/TRAIN/";
         test_data_root ="./DATA/TEST/";
     }
@@ -389,66 +425,118 @@ public:
         grad_norm = sqrt(grad_norm);
         cout << "Gradient norm: " << grad_norm << endl;
     }
-    float l_rate=0.05;
+    float l_rate=0.001;
     void train(int batch_size,int epochs){
+        auto data_all=train_data_all.get_all();
         for(int epoch=1;epoch<=epochs;epoch++){
             //if(epoch%10==0) l_rate*=0.9;
             //vector<int> train_data=get_random_num_vec(0,9,batch_size);
-            vector<int> train_data;
-            for(int i=0;i<batch_size;i++){
-                train_data.push_back(i%10);
-            }
-            matrix sum_grad_w1,sum_grad_w2,sum_grad_w3;
-            vec sum_grad_b1,sum_grad_b2,sum_grad_b3;
-            sum_grad_w1=get_full_matrix(0,w1[0].size(),w1.size());
-            sum_grad_w2=get_full_matrix(0,w2[0].size(),w2.size());
-            sum_grad_w3=get_full_matrix(0,w3[0].size(),w3.size());
-            sum_grad_b1=get_full_vec(0,b1.size());
-            sum_grad_b2=get_full_vec(0,b2.size());
-            sum_grad_b3=get_full_vec(0,b3.size());
-            float epoch_loss=0;
-            for(auto &x:train_data){
-                int pic_num=get_random_num(0,5400);
-                string pic_root=train_data_root+std::to_string(x)+"/"+std::to_string(pic_num)+".jpg";
-                matrix pic=read_img(std::data(pic_root));
-                if(!flag) show_matrix(pic),flag=!flag;
-                vec pic_vec=flatten(pic);
-                vec pic_out=forward(pic_vec);
-                //show_vec(pic_out);
-                
-                t_vec=get_target_vec(x);
-                epoch_loss+=get_one_loss(pic_out,t_vec);
-                // cout<<"Loss:"<<get_one_loss(pic_out,t_vec)<<endl; 
-                // cout<<endl;
+            // vector<int> train_data;
+            // for(int i=0;i<batch_size;i++){
+            //     train_data.push_back(i%10);
+            // }
+            unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+            shuffle(data_all.begin(),data_all.end(),std::default_random_engine(seed));
+            for(int batch_idx=0;batch_idx<=data_all.size()/batch_size;batch_idx++){
+                vecP train_data(data_all.begin()+batch_idx*batch_size,min(data_all.end(),data_all.begin()+(batch_idx+1)*batch_size));
+                matrix sum_grad_w1,sum_grad_w2,sum_grad_w3;
+                vec sum_grad_b1,sum_grad_b2,sum_grad_b3;
+                sum_grad_w1=get_full_matrix(0,w1[0].size(),w1.size());
+                sum_grad_w2=get_full_matrix(0,w2[0].size(),w2.size());
+                sum_grad_w3=get_full_matrix(0,w3[0].size(),w3.size());
+                sum_grad_b1=get_full_vec(0,b1.size());
+                sum_grad_b2=get_full_vec(0,b2.size());
+                sum_grad_b3=get_full_vec(0,b3.size());
+                float batch_loss=0;
+                for(auto &x:train_data){
+                    int batch_size=train_data.size();
+                    matrix pic=read_img(std::data(x.first));
+                    if(!flag) show_matrix(pic),flag=!flag;
+                    vec pic_vec=flatten(pic);
+                    vec pic_out=forward(pic_vec);
+                    //show_vec(pic_out);
+                    
+                    t_vec=get_target_vec(x.second);
+                    batch_loss+=get_one_loss(pic_out,t_vec);
+                    // cout<<"Loss:"<<get_one_loss(pic_out,t_vec)<<endl; 
+                    // cout<<endl;
 
-                get_gradient(pic_out);
-                sum_grad_w1=sum_grad_w1+grad_w1;
-                sum_grad_w2=sum_grad_w2+grad_w2;
-                sum_grad_w3=sum_grad_w3+grad_w3;
-                sum_grad_b1=sum_grad_b1+grad_b1;
-                sum_grad_b2=sum_grad_b2+grad_b2;
-                sum_grad_b3=sum_grad_b3+grad_b3;
+                    get_gradient(pic_out);
+                    sum_grad_w1=sum_grad_w1+grad_w1;
+                    sum_grad_w2=sum_grad_w2+grad_w2;
+                    sum_grad_w3=sum_grad_w3+grad_w3;
+                    sum_grad_b1=sum_grad_b1+grad_b1;
+                    sum_grad_b2=sum_grad_b2+grad_b2;
+                    sum_grad_b3=sum_grad_b3+grad_b3;
+                    clear_grad();
+                }
+                grad_w1=average(sum_grad_w1,batch_size);
+                grad_w2=average(sum_grad_w2,batch_size);
+                grad_w3=average(sum_grad_w3,batch_size);
+                grad_b1=average(sum_grad_b1,batch_size);
+                grad_b2=average(sum_grad_b2,batch_size);
+                grad_b3=average(sum_grad_b3,batch_size);
+                //check_gradients();
+                backward(l_rate);//学习率
                 clear_grad();
+                if((batch_idx+1)%100==0){
+                    cout<<endl<<"Epoch"<<epoch<<" batch_idx:"<<batch_idx+1<<" "<<"Loss:"<<batch_loss/batch_size<<endl<<endl;
+                }
+                else{
+                    if((batch_idx+1)%10==0) cout<<"."<<flush;
+                }
             }
-            grad_w1=average(sum_grad_w1,batch_size);
-            grad_w2=average(sum_grad_w2,batch_size);
-            grad_w3=average(sum_grad_w3,batch_size);
-            grad_b1=average(sum_grad_b1,batch_size);
-            grad_b2=average(sum_grad_b2,batch_size);
-            grad_b3=average(sum_grad_b3,batch_size);
-            //check_gradients();
-            backward(l_rate);//学习率
-            clear_grad();
-            cout<<"Epoch:"<<epoch<<" "<<"Loss:"<<epoch_loss/batch_size<<endl<<endl;
+            // matrix sum_grad_w1,sum_grad_w2,sum_grad_w3;
+            // vec sum_grad_b1,sum_grad_b2,sum_grad_b3;
+            // sum_grad_w1=get_full_matrix(0,w1[0].size(),w1.size());
+            // sum_grad_w2=get_full_matrix(0,w2[0].size(),w2.size());
+            // sum_grad_w3=get_full_matrix(0,w3[0].size(),w3.size());
+            // sum_grad_b1=get_full_vec(0,b1.size());
+            // sum_grad_b2=get_full_vec(0,b2.size());
+            // sum_grad_b3=get_full_vec(0,b3.size());
+            // float epoch_loss=0;
+            // for(auto &x:train_data){
+            //     int pic_num=get_random_num(0,5400);
+            //     string pic_root=train_data_root+std::to_string(x)+"/"+std::to_string(pic_num)+".jpg";
+            //     matrix pic=read_img(std::data(pic_root));
+            //     if(!flag) show_matrix(pic),flag=!flag;
+            //     vec pic_vec=flatten(pic);
+            //     vec pic_out=forward(pic_vec);
+            //     //show_vec(pic_out);
+                
+            //     t_vec=get_target_vec(x);
+            //     epoch_loss+=get_one_loss(pic_out,t_vec);
+            //     // cout<<"Loss:"<<get_one_loss(pic_out,t_vec)<<endl; 
+            //     // cout<<endl;
+
+            //     get_gradient(pic_out);
+            //     sum_grad_w1=sum_grad_w1+grad_w1;
+            //     sum_grad_w2=sum_grad_w2+grad_w2;
+            //     sum_grad_w3=sum_grad_w3+grad_w3;
+            //     sum_grad_b1=sum_grad_b1+grad_b1;
+            //     sum_grad_b2=sum_grad_b2+grad_b2;
+            //     sum_grad_b3=sum_grad_b3+grad_b3;
+            //     clear_grad();
+            // }
+            // grad_w1=average(sum_grad_w1,batch_size);
+            // grad_w2=average(sum_grad_w2,batch_size);
+            // grad_w3=average(sum_grad_w3,batch_size);
+            // grad_b1=average(sum_grad_b1,batch_size);
+            // grad_b2=average(sum_grad_b2,batch_size);
+            // grad_b3=average(sum_grad_b3,batch_size);
+            // //check_gradients();
+            // backward(l_rate);//学习率
+            // clear_grad();
+            // cout<<"Epoch:"<<epoch<<" "<<"Loss:"<<epoch_loss/batch_size<<endl<<endl;
         }
     }
-    void test(int test_size){
-        vector<int> test_data=get_random_num_vec(0,9,test_size);
+    void test(){
+        // vector<int> test_data=get_random_num_vec(0,9,test_size);
+        cout<<"testing"<<endl;
+        auto data_all=test_data_all.get_all();
         int ac_sum=0;
-        for(auto &x:test_data){
-            int pic_num=get_random_num(0,50);
-            string pic_root=test_data_root+std::to_string(x)+"/"+std::to_string(pic_num)+".jpg";
-            matrix pic=read_img(std::data(pic_root));
+        for(auto &x:data_all){
+            matrix pic=read_img(std::data(x.first));
             vec pic_vec=flatten(pic);
             vec out=forward(pic_vec);
             int predict=0,k=0;
@@ -463,11 +551,33 @@ public:
                 k++;
             }
             //cout<<predict<<endl;
-            if(predict==x){
+            if(predict==x.second){
                 ac_sum++;
             }
         }
-        float accuracy=ac_sum*1.0f/test_size*1.0f;
+        // for(auto &x:test_data){
+        //     int pic_num=get_random_num(0,50);
+        //     string pic_root=test_data_root+std::to_string(x)+"/"+std::to_string(pic_num)+".jpg";
+        //     matrix pic=read_img(std::data(pic_root));
+        //     vec pic_vec=flatten(pic);
+        //     vec out=forward(pic_vec);
+        //     int predict=0,k=0;
+        //     float max_probability=0;
+        //     // show_vec(out);
+        //     // cout<<endl;
+        //     for(auto &val:out){
+        //         if(val>max_probability){
+        //             predict=k;
+        //             max_probability=val;
+        //         }
+        //         k++;
+        //     }
+        //     //cout<<predict<<endl;
+        //     if(predict==x){
+        //         ac_sum++;
+        //     }
+        // }
+        float accuracy=ac_sum*1.0f/data_all.size()*1.0f;
         cout<<"Accuracy:"<<accuracy<<endl;
     }
 };
@@ -494,8 +604,8 @@ void test(){
     matrix c=test_a+test_b;
     show_matrix(c);
 
-    model.train(64,100);
-    model.test(200);
+    model.train(16,2);
+    model.test();
 }
 int main(){
     test();
