@@ -1,1 +1,1 @@
-static std::default_random_engine generator(std::chrono::system_clock::now().time_since_epoch().count());
+temp.push_back(static_cast<float>(img[(i*height + j)*channels]));
