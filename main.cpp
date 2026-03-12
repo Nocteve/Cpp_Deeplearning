@@ -1,1 +1,3 @@
-// 移除using namespace std，使用std::前缀
+int get_row_num(const matrix& a) {
+    return a.size();
+}
