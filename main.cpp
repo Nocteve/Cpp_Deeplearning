@@ -1,3 +1,1 @@
-int get_row_num(const matrix& a) {
-    return a.size();
-}
+static std::default_random_engine generator(std::chrono::system_clock::now().time_since_epoch().count());
