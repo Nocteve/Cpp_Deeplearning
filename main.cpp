@@ -1,1 +1,1 @@
-将int label=static_cast<int>(path[path.length()-1])-'0';改为从entry.path().filename()中提取数字部分。
+将temp.push_back(static_cast<float>(img[i*(width)-1+j+1]));改为temp.push_back(static_cast<float>(img[i*height*channels + j*channels]));并考虑通道数。
