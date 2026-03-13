@@ -1,1 +1,1 @@
-将随机数引擎声明为静态变量：static std::default_random_engine generator(std::random_device{}());
+将外层循环改为for(int i=0;i<height;i++)，内层循环改为for(int j=0;j<width;j++)，确保矩阵维度为height x width。
