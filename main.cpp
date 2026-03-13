@@ -1,1 +1,1 @@
-将外层循环改为for(int i=0;i<height;i++)，内层循环改为for(int j=0;j<width;j++)，确保矩阵维度为height x width。
+在vec output;后添加output.reserve(size);
