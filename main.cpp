@@ -1,1 +1,1 @@
-移除using namespace std;，使用std::前缀。
+将int label=static_cast<int>(path[path.length()-1])-'0';改为从entry.path().filename()中提取数字部分。
